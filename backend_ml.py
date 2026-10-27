@@ -19,7 +19,7 @@ COMMAND_TOPIC = "dispositivos/coral_01/control"
 clock_offset = None
 
 # Inicializar Base de Datos SQLite
-conn = sqlite3.connect("corales_telemetria.db", check_same_thread=False)
+conn = sqlite3.connect("data/corales_telemetria.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS telemetria (
@@ -34,7 +34,7 @@ cursor.execute('''
 conn.commit()
 
 # Cargar Modelo Random Forest Real
-rf_model = joblib.load("random_forest_corales.pkl")
+rf_model = joblib.load("trained_models/random_forest_corales.pkl")
 
 def clasificar_estado(vector):
     # Transforma el vector en un DataFrame con los nombres exactos del entrenamiento
