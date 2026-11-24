@@ -30,12 +30,12 @@ class FiltroPromedioMovil {
 FiltroPromedioMovil filtroAgua; FiltroPromedioMovil filtroTemp;
 FiltroPromedioMovil filtroLdr; FiltroPromedioMovil filtroPh;
 
-const char* ssid = "Pan";
-const char* password = "12345678";
+const char* ssid = "INFINITUM2C4B";
+const char* password = "k3RNhG452C";
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-const char* mqtt_server = "192.168.137.252";
+const char* mqtt_server = "192.168.1.68";
 
 #define POWER_PIN_WATER 32
 #define TMP_PIN         33

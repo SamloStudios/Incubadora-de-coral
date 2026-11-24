@@ -9,6 +9,11 @@ import pandas as pd
 import numpy as np
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+import csv
+import httpx
+from datetime import datetime
+from fastapi import Header, HTTPException
+from pydantic import BaseModel
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
@@ -55,6 +60,84 @@ def clasificar_estado(vector):
     prediction = rf_model.predict(df_input)
     return str(prediction[0])
 
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+API_KEY_ANDROID = os.getenv("API_KEY_ANDROID", "coral_android_2026")
+
+# Control de Cooldown (ej. 15 segundos entre alertas del mismo tipo)
+COOLDOWN_SEGUNDOS = 15
+ultimo_envio_alerta = {}
+ultimo_estado_telemetria = {}  # Ultima lectura para GET /api/data y /api/predict
+
+# Archivo CSV (Bitácora de 10+ disparos)
+CSV_LOG_PATH = "data/bitacora_alertas_e2e.csv"
+if not os.path.exists(CSV_LOG_PATH):
+    with open(CSV_LOG_PATH, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "prueba_id", "timestamp_iso", "sequence_id", "diagnostico_rf",
+            "latencia_red_ms", "latencia_push_ms", "latencia_total_e2e_ms"
+        ])
+
+contador_pruebas = 0
+
+async def disparar_alerta_telegram(seq_id: int, diagnostico: str, sensor_data: dict, latencia_red_ms: float):
+    global contador_pruebas
+    ahora = time.time()
+    
+    # Criterio 3: Cooldown / Debounce para evitar saturación (Alert Fatigue)
+    if diagnostico in ultimo_envio_alerta and (ahora - ultimo_envio_alerta[diagnostico]) < COOLDOWN_SEGUNDOS:
+        return
+    ultimo_envio_alerta[diagnostico] = ahora
+
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    t_inicio_push = time.time() * 1000
+
+    # Criterio 4: Payload estructurado en Markdown con todos los campos exigidos
+    mensaje = (
+        f" *ALERTA CRÍTICA - CORAL-NET IoT*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"• *Diagnóstico ML:* `{diagnostico}`\n"
+        f"• *Secuencia:* `#{seq_id}`\n"
+        f"• *Marca de tiempo:* `{timestamp_str}`\n"
+        f"• *Latencia Red (ESP→Server):* `{latencia_red_ms} ms`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 *Telemetría del Nodo:*\n"
+        f"• *Nivel Agua:* `{sensor_data.get('water_level')}/4`\n"
+        f"• *Temperatura:* `{sensor_data.get('temperature')} °C`\n"
+        f"• *Iluminación:* `{sensor_data.get('luxes', sensor_data.get('ldr_raw'))} lx`\n"
+        f"• *Nivel pH:* `{sensor_data.get('ph_level')}`"
+    )
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        # Petición estrictamente asíncrona y no bloqueante (httpx)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url, json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": mensaje,
+                "parse_mode": "Markdown"
+            })
+            t_fin_push = time.time() * 1000
+            latencia_push_ms = round(t_fin_push - t_inicio_push, 2)
+            latencia_total_e2e = round(latencia_red_ms + latencia_push_ms, 2)
+
+            if resp.status_code == 200:
+                contador_pruebas += 1
+                print(f"[PUSH #{contador_pruebas} OK] Seq={seq_id} | Red={latencia_red_ms}ms | Push={latencia_push_ms}ms | Total E2E={latencia_total_e2e}ms")
+                
+                # Guardar en bitácora CSV para el artículo IEEE
+                with open(CSV_LOG_PATH, mode="a", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        contador_pruebas, timestamp_str, seq_id, diagnostico,
+                        latencia_red_ms, latencia_push_ms, latencia_total_e2e
+                    ])
+            else:
+                print(f"[PUSH ERROR] HTTP {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"[PUSH EXCEPTION] {e}")
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections = []
@@ -97,6 +180,7 @@ def on_message(client, userdata, msg):
     try:
         payload_str = msg.payload.decode("utf-8")
         data = json.loads(payload_str)
+        t_ms = data.get("timestamp_ms", 0)
         seq_id = data.get("sequence_id", 0)
         sensor_data = data.get("data", {})
         latencia = calcularLatencia(data)
@@ -118,9 +202,27 @@ def on_message(client, userdata, msg):
 
         data["prediccion_rf"] = prediccion
         data["latencia_ms"] = latencia
+        
+        # Guardar último estado para la app Android (Retrofit)
+        global ultimo_estado_telemetria
+        ultimo_estado_telemetria = {
+            "sequence_id": seq_id,
+            "timestamp_ms": t_ms,
+            "data": sensor_data,
+            "prediccion_rf": prediccion,
+            "latencia_ms": latencia
+        }
 
         if loop is not None:
             asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(data)), loop)
+            
+            # Criterio 2: Disparo basado exclusivamente en la clasificación del Random Forest
+            if prediccion != "Crecimiento Óptimo":
+                asyncio.run_coroutine_threadsafe(
+                    disparar_alerta_telegram(seq_id, prediccion, sensor_data, latencia),
+                    loop
+                )
+
     except Exception as e:
         print("Error MQTT:", e)
 

@@ -62,7 +62,11 @@
             <input type="password" name="password" placeholder="CONTRASEÑA" required autocomplete="current-password">
             <button type="submit">INICIAR SESIÓN</button>
         </form>
-        {error_msg}
     </div>
+    <script>
+        if (new URLSearchParams(window.location.search).get('error') === '1') {
+            document.body.insertAdjacentHTML('beforeend', '<p style="color:#ff0033; text-align:center;">Credenciales inválidas</p>');
+        }
+    </script>
 </body>
 </html>
