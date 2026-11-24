@@ -268,8 +268,9 @@
         const chartLuxes = initChart('chartLuxes', 'Luminosidad (Luxes)', '#ffcc00', createGradient(document.getElementById('chartLuxes').getContext('2d'), 'rgba(255,204,0,0.5)', 'transparent'));
         const chartWater = initChart('chartWater', 'Nivel de Agua', '#0088ff', createGradient(document.getElementById('chartWater').getContext('2d'), 'rgba(0,136,255,0.5)', 'transparent'));
 
-        const host = window.location.hostname || 'localhost';
-        const ws = new WebSocket('ws://' + host + ':8000/ws/telemetria');
+        // Detecta automáticamente HTTPS -> WSS y usa el dominio y puerto actual
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/ws/telemetria`);
         
         ws.onmessage = (event) => {
             const payload = JSON.parse(event.data);
@@ -318,10 +319,10 @@
         };
 
         function control(dispositivo, accion) {
-            // Reemplaza TU_IP_REAL por la IP de la placa ESP32
-            fetch(`http://192.168.137.35/${dispositivo}/${accion}`, {mode: 'no-cors'}).catch(e => console.log("Retransmitiendo comando..."));
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ target: dispositivo, command: accion }));
+            } else {
+                console.error("WebSocket desconectado. No se pudo enviar el comando.");
             }
         }
     </script>
