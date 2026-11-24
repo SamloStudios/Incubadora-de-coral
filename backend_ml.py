@@ -217,7 +217,7 @@ def on_message(client, userdata, msg):
             asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(data)), loop)
             
             # Criterio 2: Disparo basado exclusivamente en la clasificación del Random Forest
-            if prediccion != "Crecimiento Óptimo":
+            if prediccion == "EMERGENCIA: Falla Múltiple":
                 asyncio.run_coroutine_threadsafe(
                     disparar_alerta_telegram(seq_id, prediccion, sensor_data, latencia),
                     loop

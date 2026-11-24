@@ -200,7 +200,7 @@ void loop() {
     data["water_level"] = finalWaterLevel;
     data["temperature"] = digitTemp;
     data["ldr_raw"]     = finalLdr;
-    data["ph_level"]    = round(finalPh * 100.0) / 100.0;
+    data["ph_level"]    = 7.2 // round(finalPh * 100.0) / 100.0;
     doc["data"] = data;
 
     String jsonPayload = JSON.stringify(doc);
