@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
     mqtt_client.loop_stop()
     mqtt_client.disconnect()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 # Middleware de Sesiones Seguras (Cookies HTTPS)
 app.add_middleware(
