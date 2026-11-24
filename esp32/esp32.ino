@@ -105,6 +105,23 @@ double calcular_ldr_a_lumenes(int adc_valor, double r_fija, double adc_max, doub
     return luxes;
 }
 
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String msg = "";
+  for (unsigned int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  JSONVar cmd = JSON.parse(msg);
+  if (JSON.typeof(cmd) == "undefined") return;
+
+  String target = (const char*)cmd["target"];
+  String command = (const char*)cmd["command"];
+  bool encender = (command == "on");
+
+  if (target == "motor") digitalWrite(RELAY_PIN, encender ? HIGH : LOW);
+  else if (target == "led1") digitalWrite(LED1_PIN, encender ? HIGH : LOW);
+  else if (target == "led2") digitalWrite(LED2_PIN, encender ? HIGH : LOW);
+}
+
 void setup() {
   Serial.begin(115200); delay(1000);
   lcd.begin(16, 2); lcd.clear(); lcd.print("Iniciando...");
@@ -131,6 +148,7 @@ void setup() {
   server.begin();
 
   mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqttCallback);
 }
 
 void loop() {
@@ -188,6 +206,12 @@ void loop() {
     String jsonPayload = JSON.stringify(doc);
     if (mqttClient.connected()) {
       mqttClient.publish("sensores/esp32/telemetria", jsonPayload.c_str());
+
+      // New Lines
+      if (mqttClient.connect("ESP32_Coral")) {
+        mqttClient.subscribe("dispositivos/coral_01/control");
+        Serial.print(WiFi.localIP());
+      }
     }
   }
 
