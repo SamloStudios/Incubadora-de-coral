@@ -145,7 +145,7 @@ app.add_middleware(
     secret_key=SECRET_KEY,
     session_cookie="coral_session",
     max_age=3600 * 8,  # Sesión válida por 8 horas
-    https_only=True,
+    https_only=False,
     same_site="lax"
 )
 
